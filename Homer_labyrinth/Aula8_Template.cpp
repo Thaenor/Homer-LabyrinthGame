@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <time.h>
-
+#include <AL/alut.h>
 #ifdef __APPLE__
     #include <GLUT/glut.h>
 #else
@@ -62,8 +62,10 @@ extern "C" int read_JPEG_file(const char *, char **, int *, int *, int *);
 #define JANELA_TOP                0
 #define JANELA_NAVIGATE           1
 
+using namespace std;
+
 typedef struct teclas_t{
-  GLboolean   up,down,left,right;
+	GLboolean   up, down, left, right;
 }teclas_t;
 
 typedef struct pos_t{
@@ -90,6 +92,8 @@ typedef struct ESTADO{
     teclas_t      teclas;
     GLboolean     localViewer;
     GLuint        vista[NUM_JANELAS];
+	ALuint		  buffer, source;
+	ALboolean	  tecla_som;
 }ESTADO;
 
 typedef struct MODELO{
@@ -626,6 +630,7 @@ time_t getCurrentTime(){
 
 void Timer(int value)
 {
+	ALint state;
 
 	if(modelo.homer[JANELA_NAVIGATE].GetSequence()==20 && getCurrentTime() < modelo.caiuAt + 1 ){
 		 glutTimerFunc(estado.timer, Timer, 0);
@@ -685,14 +690,24 @@ void Timer(int value)
 		// rodar objecto
 		modelo.objecto.dir -= RAD(5);
 	}
-	if (andar && cair==GL_FALSE && modelo.homer[JANELA_NAVIGATE].GetSequence() != 3) {
-		modelo.homer[JANELA_NAVIGATE].SetSequence(3);
-		modelo.homer[JANELA_TOP].SetSequence(3);
+	if (andar && cair==GL_FALSE && modelo.homer[JANELA_NAVIGATE].GetSequence() != 13) {
+		modelo.homer[JANELA_NAVIGATE].SetSequence(13);
+		modelo.homer[JANELA_TOP].SetSequence(13);
 	} 
 	if (!andar && cair==GL_FALSE && modelo.homer[JANELA_NAVIGATE].GetSequence() != 0) {
 		modelo.homer[JANELA_NAVIGATE].SetSequence(0);
 		modelo.homer[JANELA_TOP].SetSequence(0);
 	}
+
+	alGetSourcei(estado.source, AL_SOURCE_STATE, &state);
+	if (estado.tecla_som)
+	{
+		if (state != AL_PLAYING)
+			alSourcePlay(estado.source);
+	}
+	else
+		if (state == AL_PLAYING)
+			alSourceStop(estado.source);
 
 // Sequencias - 0(parado) 3(andar) 20(choque)
 //  modelo.homer[JANELA_NAVIGATE].GetSequence()  le Sequencia usada pelo homer
@@ -711,6 +726,8 @@ void imprime_ajuda(void)
   printf("l,L - Alterna o calculo luz entre Z e eye (GL_LIGHT_MODEL_LOCAL_VIEWER)\n");
   printf("w,W - Wireframe \n");
   printf("f,F - Fill \n");
+  printf("s,S - Solid. retira texturas. \n");
+  printf("a,A - tocar/parar o som. \n");
   printf("******* Movimento ******* \n");
   printf("up  - Andar para a frente \n");
   printf("down- Andar para a trás \n");
@@ -748,15 +765,19 @@ void Key(unsigned char key, int x, int y)
           glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
           glDisable(GL_TEXTURE_2D);
         break;
-    case 's':
-    case 'S':
-          glutSetWindow(estado.navigateSubwindow);
-          glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-          glDisable(GL_TEXTURE_2D);
-          glutSetWindow(estado.topSubwindow);
-          glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-          glDisable(GL_TEXTURE_2D);
-        break;
+	case 'S':
+	case 's':
+		glutSetWindow(estado.navigateSubwindow);
+		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+		glDisable(GL_TEXTURE_2D);
+		glutSetWindow(estado.topSubwindow);
+		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+		glDisable(GL_TEXTURE_2D);
+		break;
+	case 'a':
+	case 'A':
+		estado.tecla_som = AL_TRUE;
+		break;
 	}
 
 }
@@ -963,10 +984,18 @@ void init()
     glLightModelfv(GL_LIGHT_MODEL_AMBIENT,amb);
 }
 
+void initAudio(){
+	estado.buffer = alutCreateBufferFromFile("wave.wav");
+	alGenSources(1, &estado.source);
+	alSourcei(estado.source, AL_BUFFER, estado.buffer);
+	estado.tecla_som = AL_FALSE;
+}
+
 /////////////////////////////////////
 int main(int argc, char **argv)
 {
 	glutInit(&argc, argv);
+	alutInit(&argc, argv);
 	glutInitWindowPosition(10, 10);
 	glutInitWindowSize(800+GAP*3, 400+GAP*2);
 	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH);
@@ -975,6 +1004,8 @@ int main(int argc, char **argv)
 
     imprime_ajuda();
   
+	
+	
   // Registar callbacks do GLUT da janela principal
 	init();
 	glutReshapeFunc(reshapeMainWindow);
@@ -1007,6 +1038,8 @@ int main(int argc, char **argv)
 	// criar a sub window navigateSubwindow
 	estado.navigateSubwindow=glutCreateSubWindow(estado.mainWindow, 400+GAP, GAP, 400, 800);
 	init();
+	alutInit(&argc, argv);
+	initAudio();
 	setLight();
 	setMaterial();
 	
